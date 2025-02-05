@@ -41,8 +41,17 @@ jupyter notebook
 
 The examples are provided as Jupyter notebooks in the `notebooks/` directory:
 
-- `1-langchain-structured-output-examples.ipynb`: Demonstrates different methods for getting structured output from LLMs using LangChain
+- `1-langchain-structured-output-examples.ipynb`: Demonstrates different methods for getting structured output from LLMs using LangChain in initial blog:
+  https://medium.com/@docherty/mastering-structured-output-in-llms-choosing-the-right-model-for-json-output-with-langchain-be29fb6f6675
+
 - `2-langchain-structured-output-evaluation.ipynb`: Shows how to evaluate the quality of structured outputs
+
+- `3-langchain-structured-output-examples-updated.ipynb`: Update of initial examples with new style methods for getting structured output from LLMs using LangChain. See updated blog
+
+### Notes
+
+httpx has been fixed to version 0.27.2 to avoid a bug due to changed parameters
+https://community.openai.com/t/error-with-openai-1-56-0-client-init-got-an-unexpected-keyword-argument-proxies/1040332
 
 ### Requirements
 
