@@ -23,6 +23,8 @@ ipywidgets = "^8.1.5"
 plotly = "^5.24.1"
 nbformat = "^5.10.4"
 langchain-fireworks = "^0.2.7"
+pydantic-xml = "^2.14.1"
+lxml = "^5.3.1"
 
 
 [build-system]

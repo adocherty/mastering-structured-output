@@ -48,6 +48,10 @@ The examples are provided as Jupyter notebooks in the `notebooks/` directory:
 
 - `3-langchain-structured-output-examples-updated.ipynb`: Update of initial examples with new style methods for getting structured output from LLMs using LangChain. See updated blog
 
+- `4-langchain-structured-output-evaluation-updated.ipynb`: Update of initial examples with new style methods for getting structured output from LLMs using LangChain. See updated blog
+
+- `5-langchain-xml-output-examples.ipynb`: Notebook of examples for XML output using LangChain.
+
 ### Notes
 
 httpx has been fixed to version 0.27.2 to avoid a bug due to changed parameters
@@ -59,3 +63,4 @@ https://community.openai.com/t/error-with-openai-1-56-0-client-init-got-an-unexp
 - Poetry for dependency management
 - Ollama installed locally for running local LLMs
 - Anthropic API key for Claude access (optional)
+- Fireworks.ai API key for cloud models (optional)
