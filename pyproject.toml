@@ -25,6 +25,7 @@ nbformat = "^5.10.4"
 langchain-fireworks = "^0.2.7"
 pydantic-xml = "^2.14.1"
 lxml = "^5.3.1"
+pytest = "^8.3.4"
 
 
 [build-system]
