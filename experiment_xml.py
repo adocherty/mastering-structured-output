@@ -1,14 +1,44 @@
 import pickle
 import xml.etree.ElementTree as ET
-from typing import get_origin, get_args
+from typing import get_origin, get_args, Optional, Any
 from pydantic_xml import BaseXmlModel
+from langchain_core.language_models import BaseChatModel
 
 
 def pydantic_to_xml_instructions(
     model, root_name=None, root_description=None, add_instructions=True
 ):
-    """Converts a Pydantic XML model to XML format instructions"""
+    """This function generates XML schema instructions based on a Pydantic XML model,
+    which can be used to guide Large Language Models in producing structured XML output.
 
+    Args:
+        model (BaseXmlModel): A Pydantic XML model class
+        root_name (str, optional): Custom name for the root XML element.
+            Defaults to model's xml_tag or title.
+        root_description (str, optional): Custom description for the root element.
+            Defaults to the docstring of the class.
+        add_instructions (bool, optional): Whether to include prefix instructions
+            for the LLM. Defaults to True.
+
+    Returns:
+        str: A string containing XML schema instructions, including:
+            - Optional LLM instruction prefix
+            - Root element with description
+            - Nested elements for each field
+            - Type hints and descriptions as XML comments
+            - Special handling for lists and nested models
+
+    Example:
+        ```python
+        from pydantic_xml import BaseXmlModel, element
+
+        class Person(BaseXmlModel):
+            name: str = element(description="Person's full name")
+            age: int = element(description="Person's age in years")
+
+        format_instructions = pydantic_to_xml_instructions(Person)
+        ```
+    """
     # Get the JSON schema representation of the model
     schema_json = model.model_json_schema() or {}
 
@@ -76,7 +106,7 @@ def extract_substring(input_string, start_str="{", end_str="}"):
     if start != -1 and end != -1:
         return input_string[start : end + len(end_str)]
     else:
-        return input_string
+        raise RuntimeError("ExtractError: End or start strings not found")
 
 
 class EvalXmlOutput:
@@ -148,11 +178,17 @@ class EvalXmlOutput:
             )
             xml_schema_reasoning = ". ".join(errors)
 
-        except ET.ParseError as e:
+        except ET.ParseError:
             xml_valid = False
             xml_schema_ok = False
             output_sizes = dict()
             xml_schema_reasoning = "Error parsing XML"
+
+        except Exception as e:
+            xml_valid = False
+            xml_schema_ok = False
+            output_sizes = dict()
+            xml_schema_reasoning = f"Error: {e.__class__.__name__}"
 
         results = [dict(key="strict_valid", score=xml_valid)]
         results.extend(
@@ -180,16 +216,42 @@ class EvalXmlOutput:
 
 def run_xml_experiment(
     prompt_format,
-    questions,
-    llm_models,
-    structured_formats,
-    method,
-    n_iter=1,
-    resume=0,
-    results_out=None,
-    save_file_name=None,
+    questions: list[str],
+    llm_models: dict[str, BaseChatModel],
+    structured_formats: list[dict[str, Any]],
+    n_iter: int = 1,
+    resume: int = 0,
+    results_out: Optional[dict] = None,
+    save_file_name: Optional[str] = None,
 ):
+    """Run XML generation experiments across different models and schema formats.
 
+    This function evaluates how well different language models can generate XML output
+    according to specified schemas. It runs multiple iterations across different models
+    and formats, tracking success rates and errors.
+
+    Args:
+        prompt_format (Template): A prompt template that can be formatted with instructions
+        questions (list): List of questions to test XML generation against
+        llm_models (dict): Dictionary mapping model names to LLM instances
+        structured_formats (list): List of dicts containing 'pydantic' models and
+            'format_instructions' for XML generation
+        method (str): Identifier for the experiment method being used
+        n_iter (int, optional): Number of iterations to run for each question. Defaults to 1
+        resume (int, optional): Position to resume from in case of interrupted runs. Defaults to 0
+        results_out (dict, optional): Existing results dictionary to append to. Defaults to None
+        save_file_name (str, optional): Path to save experiment results. Defaults to None
+
+    Returns:
+        dict: Results organized by model and schema, containing:
+            - valid: Success rate for XML generation
+            - error_types: List of error types encountered
+            - errors: Detailed error messages
+            - outputs: Raw and parsed outputs for successful generations
+
+    The function saves results to disk if save_file_name is provided, including the method,
+    prompt, questions, and structure support data for each model.
+    """
     if results_out is None:
         structure_support_by_model = {}
     else:
@@ -218,28 +280,49 @@ def run_xml_experiment(
             prompt = prompt_format.partial(format_instructions=format_instructions)
 
             # Iterate over questions
-            error_types = []
-            error_messages = []
             outputs = []
             output_valid = 0
             for _ in range(n_iter):
                 for ii in range(n_questions):
+                    parsed = None
+                    output = None
+                    error_message = None
+                    error_type = "ok"
                     try:
                         test_chain = prompt | llm_model
                         output = test_chain.invoke(dict(question=questions[ii]))
 
-                        # Parse the XML
-                        parsed = pydantic_obj.from_xml(output)
-                        outputs.append(dict(raw=output.content, parsed=parsed))
+                        # Trim to XML content only
+                        start_tag = "<" + pydantic_obj.__xml_tag__ + ">"
+                        end_tag = "</" + pydantic_obj.__xml_tag__ + ">"
+                        output_xml = extract_substring(
+                            output.content, start_tag, end_tag
+                        )
 
-                        error_types.append("ok")
+                        # Extraneous content
+                        extra_output_chrs = len(output.content) - len(output_xml)
+
+                        # Parse the XML
+                        parsed = pydantic_obj.from_xml(output_xml)
+
                         output_valid += 1
 
                     # Failures
                     except Exception as e:
-                        error_types.append("parse_error")
+                        error_type = "parse_error"
                         print(f"Error: {type(e).__name__}")
-                        error_messages.append(f"{type(e).__name__}, {e}")
+                        error_message = f"{type(e).__name__}, {e}"
+
+                    finally:
+                        outputs.append(
+                            dict(
+                                raw=output,
+                                parsed=parsed,
+                                error_type=error_type,
+                                error_message=error_message,
+                                extra_output_chrs=extra_output_chrs,
+                            )
+                        )
 
                     # Pause to avoid timeouts
                     print(".", end="")
@@ -247,15 +330,12 @@ def run_xml_experiment(
 
             structure_support_by_model[model_name][pydantic_obj.__name__] = dict(
                 valid=output_valid / (n_iter * n_questions),
-                error_types=error_types,
-                errors=error_messages,
                 outputs=outputs,
             )
     if save_file_name:
         with open(file=save_file_name, mode="wb") as f:
             pickle.dump(
                 dict(
-                    method=method,
                     prompt=prompt,
                     questions=questions,
                     structure_support_by_model=structure_support_by_model,
