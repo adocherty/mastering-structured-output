@@ -43,7 +43,7 @@ def pydantic_to_xml_instructions(
     schema_json = model.model_json_schema() or {}
 
     xml = (
-        "You must respond only in XML using the following schema:\n"
+        "You must respond only in XML using the following schema. Do not provide any explanation outside the XML.\n"
         if add_instructions
         else ""
     )
@@ -78,7 +78,7 @@ def pydantic_to_xml_instructions(
                 )
             else:
                 list_xml = f"  <{tag}>\n"
-                list_xml += f"    {description}\n"
+                list_xml += f"    {{{description} - must be type {subtype.__name__}}}\n"
                 list_xml += f"  </{tag}>"
 
             xml += "<!-- First list element -->\n"
@@ -91,7 +91,7 @@ def pydantic_to_xml_instructions(
         else:
             # Add field as XML element with type comment and description
             xml += f"  <{tag}>\n"
-            xml += f"    {{{description}}}\n"
+            xml += f"    {{{description} - must be type {field_type.__name__}}}\n"
             xml += f"  </{tag}>\n"
 
     xml += f"</{_root_name}>"
@@ -262,19 +262,26 @@ def run_xml_experiment(
 
     # Iterate over models
     for model_name, llm_model in llm_models.items():
-        structure_support_by_model[model_name] = {}
+        if model_name not in structure_support_by_model:
+            structure_support_by_model[model_name] = {}
 
         # Iterate over schemas
         for structure in structured_formats:
             pydantic_obj = structure["pydantic"]
+
+            # Skip over existing experiments
+            if pydantic_obj.__name__ in structure_support_by_model[model_name]:
+                continue
+
+            # Another way to skip -- deprecate this?
+            position += 1
+            if position < resume:
+                continue
+
             format_instructions = structure["format_instructions"]
             print(
                 f"Model: {model_name}  Output: {pydantic_obj.__name__}   Pos: {position}"
             )
-
-            position += 1
-            if position < resume:
-                continue
 
             # Format instructions, if required
             prompt = prompt_format.partial(format_instructions=format_instructions)
