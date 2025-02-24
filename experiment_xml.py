@@ -317,7 +317,7 @@ def run_xml_experiment(
                     # Failures
                     except Exception as e:
                         error_type = "parse_error"
-                        print(f"Error: {type(e).__name__}")
+                        # print(f"Error: {type(e).__name__}")
                         error_message = f"{type(e).__name__}, {e}"
 
                     finally:
