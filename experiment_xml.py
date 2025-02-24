@@ -43,7 +43,8 @@ def pydantic_to_xml_instructions(
     schema_json = model.model_json_schema() or {}
 
     xml = (
-        "You must respond only in XML using the following schema. Do not provide any explanation outside the XML.\n"
+        "You must respond only in XML using the following schema.\n"
+        "Do not provide any output outside the first and last XML tags.\n\n"
         if add_instructions
         else ""
     )
@@ -66,7 +67,8 @@ def pydantic_to_xml_instructions(
             )
             xml += "\n"
 
-        # Handle lists (but not lists of lists!)
+        # Handle lists
+        # TODO: lists of lists are not currently handled
         elif get_origin(field_type) is list:
             subtype = get_args(field_type)[0]
             if isinstance(subtype, type) and issubclass(subtype, BaseXmlModel):
