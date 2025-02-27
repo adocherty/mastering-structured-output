@@ -1,12 +1,152 @@
 import pickle
+import pandas as pd
 import xml.etree.ElementTree as ET
 from typing import get_origin, get_args, Optional, Any
 from pydantic_xml import BaseXmlModel
 from langchain_core.language_models import BaseChatModel
+from pydantic_xml import BaseXmlModel, element, attr
+
+## START: Experiment schema definitions
+
+
+class ArticleResponse1XML(BaseXmlModel, tag="article"):
+    """Structured article for publication answering a reader's question"""
+
+    title: str = element(description="Title of the article")
+    answer: str = element(
+        description="Provide a detailed description of historical events to answer the question"
+    )
+    number: int = element(description="A number that is most relevant to the question.")
+
+
+class ArticleResponse1nointXML(BaseXmlModel, tag="article"):
+    """Structured article for publication answering a reader's question"""
+
+    title: str = element(description="Title of the article")
+    answer: str = element(
+        description="Provide a detailed description of historical events to answer the question"
+    )
+    number: str = element(description="A number that is most relevant to the question.")
+
+
+# Lists of simple types
+class ArticleResponse2XML(BaseXmlModel, tag="article"):
+    """Structured article for publication answering a reader's question"""
+
+    title: str = element(description="Title of the article")
+    answer: str = element(description="Answer the writer's question")
+    further_questions: list[str] = element(
+        tag="further_question",
+        description="A list of related questions that may be of interest to the readers.",
+    )
+
+
+class ListofStrXML(BaseXmlModel):
+    """A list of related questions of interest to the readers"""
+
+    further_questions: list[str] = element(
+        tag="further_question",
+        description="A related question of interest to readers",
+    )
+
+
+# Lists of simple types (encapsulated list)
+class ArticleResponse2XMLalt(BaseXmlModel, tag="article"):
+    """Structured article for publication answering a reader's question"""
+
+    title: str = element(description="Title of the article")
+    answer: str = element(description="Answer the writer's question")
+    further_questions: ListofStrXML = element(
+        tag="further_questions",
+        description="A list of related questions of interest to the readers",
+    )
+
+
+# Nested types
+class HistoricalEventXML(BaseXmlModel):
+    """The year and explanation of a historical event."""
+
+    year: str = element(description="The year of the historical event")
+    event: str = element(
+        description="A clear and concise explanation of what happened in this event"
+    )
+
+
+class ArticleResponse3XML(BaseXmlModel, tag="article"):
+    """Structured article for publication answering a reader's question"""
+
+    title: str = element(description="[Title of the article]")
+    historical_event_1: HistoricalEventXML = element(
+        description="A first historical event relevant to the question"
+    )
+    historical_event_2: HistoricalEventXML = element(
+        description="A second historical event relevant to the question"
+    )
+
+
+# Lists of custom types
+class ArticleResponse4XML(BaseXmlModel, tag="article"):
+    """Structured article for publication answering a reader's question"""
+
+    title: str = element(description="Title of the article")
+    historical_timeline: list[HistoricalEventXML] = element(
+        description="A list of historical events relevant to the question"
+    )
+
+
+class ListofHistoricalEventXML(BaseXmlModel):
+    """A list of historical events relevant to the question"""
+
+    historical_event: list[HistoricalEventXML] = element(
+        tag="historical_event",
+        description="A relevant historical event",
+    )
+
+
+# Lists of custom types (encapsulated list)
+class ArticleResponse4XMLalt(BaseXmlModel, tag="article"):
+    """Structured article for publication answering a reader's question"""
+
+    title: str = element(description="Title of the article")
+    historical_timeline: ListofHistoricalEventXML = element(
+        description="A list of historical events relevant to the question"
+    )
+
+
+## END: Experiment schema definitions
+
+
+def load_experiment_summary(suffix: str, date: str, namespace: dict):
+    with open(file=f"exp{suffix}_all_models_{date}.pkl", mode="rb") as f:
+        data = pickle.load(f)
+
+    # Inject into toplevel namespace
+    for key, value in data["models"].items():
+        if key not in namespace:
+            print(f"Loaded {key}")
+            namespace[key] = value
+
+
+def load_single_experiment(suffix: str, date: str, ident: str, namespace: dict):
+    # Load individual model
+    with open(
+        file=f"exp{suffix}_xml_output_{ident}_{date}.pkl",
+        mode="rb",
+    ) as f:
+        data = pickle.load(f)
+
+    key = f"structure_support_by_model_{ident}"
+    if key not in namespace:
+        print(f"Loaded {key}")
+        namespace[key] = data["structure_support_by_model"]
 
 
 def pydantic_to_xml_instructions(
-    model, root_name=None, root_description=None, add_instructions=True
+    model,
+    root_name=None,
+    root_description=None,
+    add_instructions=True,
+    n_list_examples: int = 2,
 ):
     """This function generates XML schema instructions based on a Pydantic XML model,
     which can be used to guide Large Language Models in producing structured XML output.
@@ -19,6 +159,7 @@ def pydantic_to_xml_instructions(
             Defaults to the docstring of the class.
         add_instructions (bool, optional): Whether to include prefix instructions
             for the LLM. Defaults to True.
+        n_list_examples (int, optional): Number of examples to give for a list (excluding elipsis). Defaults to 2
 
     Returns:
         str: A string containing XML schema instructions, including:
@@ -83,10 +224,13 @@ def pydantic_to_xml_instructions(
                 list_xml += f"    {{{description} - must be type {subtype.__name__}}}\n"
                 list_xml += f"  </{tag}>"
 
-            xml += "<!-- First list element -->\n"
-            xml += list_xml + "\n"
-            xml += "<!-- Next list element -->\n"
-            xml += list_xml + "\n"
+            # Insert list XML multiple times to prompt a list
+            for ii in range(n_list_examples):
+                if ii == 1:
+                    xml += "<!-- First list element -->\n"
+                else:
+                    xml += "<!-- Next list element -->\n"
+                xml += list_xml + "\n"
             xml += "<!-- Etc -->\n"
             xml += f"  <{tag}>\n  ...\n  </{tag}>\n"
 
@@ -296,6 +440,7 @@ def run_xml_experiment(
                     parsed = None
                     output = None
                     error_message = None
+                    extra_output_chrs = None
                     error_type = "ok"
                     try:
                         test_chain = prompt | llm_model
@@ -315,12 +460,14 @@ def run_xml_experiment(
                         parsed = pydantic_obj.from_xml(output_xml)
 
                         output_valid += 1
+                        print(".", end="")
 
                     # Failures
                     except Exception as e:
                         error_type = "parse_error"
                         # print(f"Error: {type(e).__name__}")
                         error_message = f"{type(e).__name__}, {e}"
+                        print("e", end="")
 
                     finally:
                         outputs.append(
@@ -333,8 +480,8 @@ def run_xml_experiment(
                             )
                         )
 
-                    # Pause to avoid timeouts
-                    print(".", end="")
+                    # Pause to avoid timeouts?
+
                 print()
 
             structure_support_by_model[model_name][pydantic_obj.__name__] = dict(
@@ -345,7 +492,7 @@ def run_xml_experiment(
         with open(file=save_file_name, mode="wb") as f:
             pickle.dump(
                 dict(
-                    prompt=prompt,
+                    prompt=prompt_format,
                     questions=questions,
                     structure_support_by_model=structure_support_by_model,
                 ),
