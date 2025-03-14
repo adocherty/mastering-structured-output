@@ -2,23 +2,147 @@ import numpy as np
 from scipy import stats
 import argparse
 import pandas as pd
+import tabulate
 
 
-def results_to_table(results_list):
+def format_diag(outputs):
+    num_correct = pd.Series([item["error_type"] == "ok" for item in outputs]).sum()
+    num_total = len(outputs)
+    return f"{num_correct}, {num_total}"
+
+
+def format_ci_pm(outputs):
+    num_correct = pd.Series([item["error_type"] == "ok" for item in outputs]).sum()
+    num_total = len(outputs)
+    avg, lb, ub = wilson_score_ci(num_correct, num_total)
+    return f"{avg*100:.0f}% ±{max(avg-lb, ub-avg)*100:.0f}"
+
+
+def format_ci_range(outputs):
+    num_correct = pd.Series([item["error_type"] == "ok" for item in outputs]).sum()
+    num_total = len(outputs)
+    avg, lb, ub = wilson_score_ci(num_correct, num_total)
+    return f"{lb*100:.1f}% — {ub*100:.0f}% "
+
+
+def format_average_percent(outputs):
+    avg = pd.Series([item["error_type"] == "ok" for item in outputs]).mean()
+    return f"{avg*100:.0f}%"
+
+
+def results_to_table(
+    results_list,
+    strip_prefix=True,
+    subset=None,
+    combine_levels=False,
+    markdown=False,
+    cell_format=format_average_percent,
+    compare_to=None,
+):
+    prefix_len = 0
+    names = [name for name in results_list.keys() if subset is None or name in subset]
+    prefix_len = 0
+    if strip_prefix and len(names) > 1:
+        split_names = [name.split("_") for name in names]
+        for tokens in zip(*split_names):
+            if len(set(tokens)) == 1:
+                prefix_len += len(tokens[0]) + 1
+            else:
+                break
+
+    results_list = {name[prefix_len:]: results_list[name] for name in names}
 
     df_results = {}
     for name, ss_results in results_list.items():
-        df_results[name] = pd.DataFrame.from_dict(
-            {
-                tuple(mname.split("_", maxsplit=1)): {
-                    tname: ss_results[mname][tname]["valid"] * 100
-                    for tname in ss_results[mname].keys()
-                }
-                for mname in ss_results.keys()
-            },
-            orient="index",
+        if isinstance(ss_results, dict):
+            ss_results_list = [ss_results]
+        elif isinstance(ss_results, list):
+            ss_results_list = ss_results
+        else:
+            raise TypeError(f"Must be dict or list not {type(ss_results)}")
+
+        # Collate results for each model over all experiments
+        current_outputs = {}
+        for ss in ss_results_list:
+            for name_model, data_model in ss.items():
+                if name_model not in current_outputs:
+                    current_outputs[name_model] = {}
+                for name_level, data_level in data_model.items():
+                    if name_level not in current_outputs[name_model]:
+                        current_outputs[name_model][name_level] = []
+                    current_outputs[name_model][name_level].extend(
+                        data_level["outputs"]
+                    )
+
+        # Analyse combined outputs
+        if combine_levels:
+            df_results[name] = {
+                tuple(name_model.split("_", maxsplit=1)): cell_format(
+                    [item for data_level in data_model.values() for item in data_level]
+                )
+                for name_model, data_model in current_outputs.items()
+            }
+        else:
+            df_results[name] = pd.DataFrame.from_dict(
+                {
+                    tuple(name_model.split("_", maxsplit=1)): {
+                        name_level: cell_format(data_level)
+                        for name_level, data_level in data_model.items()
+                    }
+                    for name_model, data_model in current_outputs.items()
+                },
+                orient="index",
+            )
+
+    # Have we combined the levels?
+    if combine_levels:
+        df_out = pd.DataFrame.from_dict(df_results)
+    else:
+        df_out = pd.concat(df_results).reorder_levels([1, 2, 0], axis=0)
+
+        # Drop level in axis if only one
+        if len(df_results.keys()) == 1:
+            df_out = df_out.droplevel(level=2, axis=0)
+
+    # Sort axis
+    df_out.sort_index(axis=0, inplace=True)
+
+    if compare_to is not None:
+        # Create a boolean mask of differences (this will fail if the tables are not the same shape)
+        diff = df_out != compare_to
+
+        # Define a function that uses the diff mask to style cells: red, bold for differences.
+        def style_diff(row):
+            return [
+                "color: red; font-weight: bold" if diff.loc[row.name, col] else ""
+                for col in row.index
+            ]
+
+        def text_style_diff(row):
+            return pd.Series(
+                [
+                    f"**{v}**" if diff.loc[row.name, col] else v
+                    for v, col in zip(row, row.index)
+                ],
+                index=row.index,
+            )
+
+        # Apply the styling to temp_table_2 and display the styled table.
+        if markdown:
+            df_out = df_out.apply(text_style_diff, axis=1)
+        else:
+            df_out = df_out.style.apply(style_diff, axis=1)
+
+    # Output in markdown
+    if markdown:
+        return tabulate.tabulate(
+            df_out.reset_index(),
+            headers="keys",
+            tablefmt="pipe",
+            showindex=False,
         )
-    return pd.concat(df_results).reorder_levels([1, 2, 0], axis=0).sort_index(axis=0)
+    else:
+        return df_out
 
 
 def compare_m_experiments(
@@ -26,14 +150,48 @@ def compare_m_experiments(
     p_value=0.05,
     bonferroni=True,
     alternative="greater",
-    print_only_passed=False,
+    print_option="none",
+    subset=None,
 ):
     """For each model compare the two experiments statistically.
     By default a one-sided test is used.
     Bonferroni correction is applied.
+
+    Args:
+        print_option: one of "none", "all", "passed"
+        subset: list of experiments to use, otherwise None
     """
+    # Collate results for each model over all experiments
+    combined_results = {}
+    for name, ss_results in results_list.items():
+        # Only include names in subset
+        if subset and name not in subset:
+            continue
+
+        # Check if this combines multiple experiments
+        if isinstance(ss_results, dict):
+            ss_results_list = [ss_results]
+        elif isinstance(ss_results, list):
+            ss_results_list = ss_results
+        else:
+            raise TypeError(f"Must be dict or list not {type(ss_results)}")
+
+        # Pull out all results into combined list of outputs
+        current_outputs = {}
+        for ss in ss_results_list:
+            for name_model, data_model in ss.items():
+                if name_model not in current_outputs:
+                    current_outputs[name_model] = {}
+                for name_level, data_level in data_model.items():
+                    if name_level not in current_outputs[name_model]:
+                        current_outputs[name_model][name_level] = []
+                    current_outputs[name_model][name_level].extend(
+                        data_level["outputs"]
+                    )
+        combined_results[name] = current_outputs
+
     # Get all model names and select the subset shared by all experiments
-    all_models = [set(inner_dict.keys()) for inner_dict in results_list.values()]
+    all_models = [set(inner_dict.keys()) for inner_dict in combined_results.values()]
     model_list = set.intersection(*all_models)
 
     # Bonferroni correction
@@ -49,14 +207,15 @@ def compare_m_experiments(
     for model in model_list:
 
         contingency_table = {}
-        for name, ss_results in results_list.items():
+        for name, ss_results in combined_results.items():
             num_true = 0
             num_total = 0
 
-            for tname in ss_results[model].keys():
-                num_data = len(ss_results[model][tname]["outputs"])
-                num_true += ss_results[model][tname]["valid"] * num_data
-                num_total += num_data
+            for name_level, data_level in ss_results[model].items():
+                num_total += len(data_level)
+                num_true += pd.Series(
+                    [item["error_type"] == "ok" for item in data_level]
+                ).sum()
 
             contingency_table[name] = {
                 "Passed": num_true,
@@ -73,17 +232,17 @@ def compare_m_experiments(
         sf = stats.fisher_exact(ct_n, alternative=alternative)
         sb = stats.barnard_exact(ct_n, alternative=alternative)
 
-        hypothesis_tests[model] = {
+        hypothesis_tests[tuple(model.split("_", maxsplit=1))] = {
             "Fisher exact": sf.pvalue,
             "Barnard exact": sb.pvalue,
             "Outcome": sb.pvalue < alpha,
         }
 
-        if not print_only_passed or (sb.pvalue < alpha):
+        if print_option == "all" or (print_option == "passed" and (sb.pvalue < alpha)):
             print(f"\n{model}")
             print(f"Fisher exact p-value = {sf.pvalue}")
             print(f"Barnard exact p-value = {sb.pvalue}")
-        if sb.pvalue < alpha:
+        if print_option != "none" and (sb.pvalue < alpha):
             print(f"Hypothesis test passed: {sb.pvalue:.3g} < {alpha:.3g}")
 
     return pd.DataFrame.from_dict(hypothesis_tests, orient="index")

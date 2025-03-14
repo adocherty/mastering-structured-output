@@ -5,135 +5,39 @@ from typing import get_origin, get_args, Optional, Any
 from pydantic_xml import BaseXmlModel
 from langchain_core.language_models import BaseChatModel
 from pydantic_xml import BaseXmlModel, element, attr
-
-## START: Experiment schema definitions
-
-
-class ArticleResponse1XML(BaseXmlModel, tag="article"):
-    """Structured article for publication answering a reader's question"""
-
-    title: str = element(description="Title of the article")
-    answer: str = element(
-        description="Provide a detailed description of historical events to answer the question"
-    )
-    number: int = element(description="A number that is most relevant to the question.")
+from pydantic_structure_definitions import *
 
 
-class ArticleResponse1nointXML(BaseXmlModel, tag="article"):
-    """Structured article for publication answering a reader's question"""
-
-    title: str = element(description="Title of the article")
-    answer: str = element(
-        description="Provide a detailed description of historical events to answer the question"
-    )
-    number: str = element(description="A number that is most relevant to the question.")
-
-
-# Lists of simple types
-class ArticleResponse2XML(BaseXmlModel, tag="article"):
-    """Structured article for publication answering a reader's question"""
-
-    title: str = element(description="Title of the article")
-    answer: str = element(description="Answer the writer's question")
-    further_questions: list[str] = element(
-        tag="further_question",
-        description="A list of related questions that may be of interest to the readers.",
-    )
-
-
-class ListofStrXML(BaseXmlModel):
-    """A list of related questions of interest to the readers"""
-
-    further_questions: list[str] = element(
-        tag="further_question",
-        description="A related question of interest to readers",
-    )
-
-
-# Lists of simple types (encapsulated list)
-class ArticleResponse2XMLalt(BaseXmlModel, tag="article"):
-    """Structured article for publication answering a reader's question"""
-
-    title: str = element(description="Title of the article")
-    answer: str = element(description="Answer the writer's question")
-    further_questions: ListofStrXML = element(
-        tag="further_questions",
-        description="A list of related questions of interest to the readers",
-    )
-
-
-# Nested types
-class HistoricalEventXML(BaseXmlModel):
-    """The year and explanation of a historical event."""
-
-    year: str = element(description="The year of the historical event")
-    event: str = element(
-        description="A clear and concise explanation of what happened in this event"
-    )
-
-
-class ArticleResponse3XML(BaseXmlModel, tag="article"):
-    """Structured article for publication answering a reader's question"""
-
-    title: str = element(description="[Title of the article]")
-    historical_event_1: HistoricalEventXML = element(
-        description="A first historical event relevant to the question"
-    )
-    historical_event_2: HistoricalEventXML = element(
-        description="A second historical event relevant to the question"
-    )
-
-
-# Lists of custom types
-class ArticleResponse4XML(BaseXmlModel, tag="article"):
-    """Structured article for publication answering a reader's question"""
-
-    title: str = element(description="Title of the article")
-    historical_timeline: list[HistoricalEventXML] = element(
-        description="A list of historical events relevant to the question"
-    )
-
-
-class ListofHistoricalEventXML(BaseXmlModel):
-    """A list of historical events relevant to the question"""
-
-    historical_event: list[HistoricalEventXML] = element(
-        tag="historical_event",
-        description="A relevant historical event",
-    )
-
-
-# Lists of custom types (encapsulated list)
-class ArticleResponse4XMLalt(BaseXmlModel, tag="article"):
-    """Structured article for publication answering a reader's question"""
-
-    title: str = element(description="Title of the article")
-    historical_timeline: ListofHistoricalEventXML = element(
-        description="A list of historical events relevant to the question"
-    )
-
-
-## END: Experiment schema definitions
-
-
-def load_experiment_summary(suffix: str, date: str, namespace: dict):
+def load_experiment_summary(
+    suffix: str, date: str, namespace: dict, search_mode: Optional[str] = None
+):
     with open(file=f"exp{suffix}_all_models_{date}.pkl", mode="rb") as f:
-        data = pickle.load(f)
+        data = DynamicPXUnpickler(f, search_mode=search_mode).load()
 
-    # Inject into toplevel namespace
+    # Load models into namespace
     for key, value in data["models"].items():
         if key not in namespace:
             print(f"Loaded {key}")
             namespace[key] = value
 
+    # Load other data
+    metadata_out = {k: v for k, v in data.items() if k != "models"}
+    return metadata_out
 
-def load_single_experiment(suffix: str, date: str, ident: str, namespace: dict):
+
+def load_single_experiment(
+    suffix: str,
+    date: str,
+    ident: str,
+    namespace: dict,
+    search_mode: Optional[str] = None,
+):
     # Load individual model
     with open(
         file=f"exp{suffix}_xml_output_{ident}_{date}.pkl",
         mode="rb",
     ) as f:
-        data = pickle.load(f)
+        data = DynamicPXUnpickler(f, search_mode=search_mode).load()
 
     key = f"structure_support_by_model_{ident}"
     if key not in namespace:
@@ -499,3 +403,116 @@ def run_xml_experiment(
                 f,
             )
     return structure_support_by_model
+
+
+def analyse_xml_experiment(
+    structure_support_by_model: dict,
+    structured_formats: list[dict[str, Any]],
+    resume: int = 0,
+    report_differences: bool = False,
+    verbose: bool = False,
+):
+    """Recalculate the results from a previous experiment
+
+    Args:
+        results_out (dict): Existing results dictionary to analyse. Contains outputs
+          with the results of a previous experiment run.
+        save_file_name (str, optional): Path to save experiment results. Defaults to None
+        report_differences (bool): If there are differences in current result (error or not)
+            report them in the console. Default False.
+        verbose (bool): Print success/failure for each model. Default False.
+    Returns:
+        dict: Results organized by model and schema, containing:
+            - valid: Success rate for XML generation
+            - error_types: List of error types encountered
+            - errors: Detailed error messages
+            - outputs: Raw and parsed outputs for successful generations
+    """
+    position = 0
+    results_out = {}
+
+    # Iterate over models
+    for model_name, output_by_structure in structure_support_by_model.items():
+        results_out[model_name] = {}
+
+        # Iterate over schemas
+        for structure in structured_formats:
+            pydantic_obj = structure["pydantic"]
+            structure_name = pydantic_obj.__name__
+
+            # Skip over existing experiments
+            if structure_name not in output_by_structure:
+                verbose and print(
+                    f"Structure {structure_name} not found for model {model_name}"
+                )
+                continue
+            results_out[model_name][structure_name] = {}
+
+            # Another way to skip -- deprecate this?
+            position += 1
+            if position < resume:
+                continue
+
+            verbose and print(
+                f"Model: {model_name}  Structure: {structure_name}   Pos: {position}"
+            )
+
+            # Iterate over outputs
+            current_outputs = output_by_structure[structure_name]["outputs"]
+            new_outputs = []
+            output_valid = 0
+            for output in current_outputs:
+                output_raw = output.get("raw", None)
+                parsed = None
+                error_message = None
+                extra_output_chrs = None
+                error_type = "ok"
+                try:
+                    # Trim to XML content only
+                    start_tag = "<" + pydantic_obj.__xml_tag__ + ">"
+                    end_tag = "</" + pydantic_obj.__xml_tag__ + ">"
+                    output_xml = extract_substring(
+                        output_raw.content, start_tag, end_tag
+                    )
+
+                    # Extraneous content
+                    extra_output_chrs = len(output_raw.content) - len(output_xml)
+
+                    # Parse the XML
+                    parsed = pydantic_obj.from_xml(output_xml)
+
+                    output_valid += 1
+                    verbose and print(".", end="")
+
+                # Failures
+                except Exception as e:
+                    error_type = "parse_error"
+                    error_message = f"{type(e).__name__}, {e}"
+                    verbose and print("e", end="")
+
+                finally:
+                    new_outputs.append(
+                        dict(
+                            raw=output_raw,
+                            parsed=parsed,
+                            error_type=error_type,
+                            error_message=error_message,
+                            extra_output_chrs=extra_output_chrs,
+                            same_as_prior=(error_type == output["error_type"]),
+                        )
+                    )
+
+                # Compare with previous result
+                if report_differences and (error_type != output["error_type"]):
+                    print(f"DIFF: {output['error_type']} -> {error_type}")
+
+            verbose and print()
+
+            results_out[model_name][structure_name] = dict(
+                num_correct=output_valid,
+                num_total=len(current_outputs),
+                valid=output_valid / len(current_outputs),
+                outputs=new_outputs,
+            )
+
+    return results_out
