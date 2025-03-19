@@ -6,7 +6,6 @@ authors = ["Andrew Docherty <docherty@gmail.com>"]
 readme = "README.md"
 package-mode = false
 
-
 [tool.poetry.dependencies]
 httpx = "=0.27.2"
 python = "~3.12"
@@ -14,15 +13,13 @@ langchain = "^0.3.17"
 ipykernel = "^6.29.5"
 langchain-anthropic = "^0.2.3"
 langchain-ollama = "^0.2.3"
+langchain-fireworks = "^0.2.7"
 streamlit = "^1.39.0"
 pandas = "^2.2.3"
 requests = "^2.32.3"
-anthropic = "^0.36.0"
 tabulate = "^0.9.0"
 ipywidgets = "^8.1.5"
-plotly = "^5.24.1"
 nbformat = "^5.10.4"
-langchain-fireworks = "^0.2.7"
 pydantic-xml = "^2.14.1"
 lxml = "^5.3.1"
 pytest = "^8.3.4"

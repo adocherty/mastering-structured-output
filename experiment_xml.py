@@ -6,12 +6,20 @@ from pydantic_xml import BaseXmlModel
 from langchain_core.language_models import BaseChatModel
 from pydantic_xml import BaseXmlModel, element, attr
 from pydantic_structure_definitions import *
+from pathlib import Path
 
 
 def load_experiment_summary(
-    suffix: str, date: str, namespace: dict, search_mode: Optional[str] = None
+    suffix: str,
+    date: str,
+    namespace: dict,
+    dir: Optional[str] = None,
+    search_mode: Optional[str] = None,
 ):
-    with open(file=f"exp{suffix}_all_models_{date}.pkl", mode="rb") as f:
+    filename = f"exp{suffix}_all_models_{date}.pkl"
+    fileloc = Path(dir) / filename if dir else Path(filename)
+
+    with fileloc.open("rb") as f:
         data = DynamicPXUnpickler(f, search_mode=search_mode).load()
 
     # Load models into namespace
@@ -30,13 +38,14 @@ def load_single_experiment(
     date: str,
     ident: str,
     namespace: dict,
+    dir: Optional[str] = None,
     search_mode: Optional[str] = None,
 ):
     # Load individual model
-    with open(
-        file=f"exp{suffix}_xml_output_{ident}_{date}.pkl",
-        mode="rb",
-    ) as f:
+    filename = f"exp{suffix}_xml_output_{ident}_{date}.pkl"
+    fileloc = Path(dir) / filename if dir else Path(filename)
+
+    with fileloc.open("rb") as f:
         data = DynamicPXUnpickler(f, search_mode=search_mode).load()
 
     key = f"structure_support_by_model_{ident}"
