@@ -1,0 +1,13 @@
+pydantic==2.10.6
+langchain==0.3.21
+langchain-anthropic==0.3.10
+langchain-core==0.3.45
+langchain-ollama==0.2.3
+langchain-fireworks==0.2.7
+langsmith==0.3.16
+pandas==2.2.3
+streamlit==1.43.2
+tabulate==0.9.0
+pydantic-xml==2.14.3
+scipy==1.15.2
+lxml==5.3.1

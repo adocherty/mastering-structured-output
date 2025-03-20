@@ -1,6 +1,6 @@
 ## Matering structured output with LangChain
 
-See explanation on blog post:
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/adocherty/mastering-structured-output/publish?urlpath=%2Fdoc%2Ftree%2Findex.ipynb)
 
 ### Setup and Installation
 
@@ -39,18 +39,10 @@ jupyter notebook
 
 ### Running Examples
 
-The examples are provided as Jupyter notebooks in the `notebooks/` directory:
+These examples can be run on Binder:
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/adocherty/mastering-structured-output/HEAD?urlpath=%2Fdoc%2Ftree%2Findex.ipynb)
 
-- `1-langchain-structured-output-examples.ipynb`: Demonstrates different methods for getting structured output from LLMs using LangChain in initial blog:
-  https://medium.com/@docherty/mastering-structured-output-in-llms-choosing-the-right-model-for-json-output-with-langchain-be29fb6f6675
-
-- `2-langchain-structured-output-evaluation.ipynb`: Shows how to evaluate the quality of structured outputs
-
-- `3-langchain-structured-output-examples-updated.ipynb`: Update of initial examples with new style methods for getting structured output from LLMs using LangChain. See updated blog
-
-- `4-langchain-structured-output-evaluation-updated.ipynb`: Update of initial examples with new style methods for getting structured output from LLMs using LangChain. See updated blog
-
-- `5-langchain-xml-output-examples.ipynb`: Notebook of examples for XML output using LangChain.
+See `index.ipynb` for a description and link to the notebooks.
 
 ### Notes
 
