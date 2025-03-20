@@ -1,4 +1,4 @@
-## Matering structured output with LangChain
+## Mastering structured output with LangChain
 
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/adocherty/mastering-structured-output/publish?urlpath=%2Fdoc%2Ftree%2Findex.ipynb)
 
