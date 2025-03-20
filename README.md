@@ -1,5 +1,7 @@
 ## Matering structured output with LangChain
 
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/adocherty/mastering-structured-output/publish?urlpath=%2Fdoc%2Ftree%2Findex.ipynb)
+
 ### Setup and Installation
 
 This project uses Poetry for dependency management. Follow these steps to get started:
