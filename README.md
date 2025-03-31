@@ -2,6 +2,13 @@
 
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/adocherty/mastering-structured-output/publish?urlpath=%2Fdoc%2Ftree%2Findex.ipynb)
 
+### Articles
+The notebooks in this repo are described in the following series of blog posts:
+
+1. [Mastering Structured Output in LLMs 1: JSON output with LangChain](https://medium.com/@docherty/mastering-structured-output-in-llms-choosing-the-right-model-for-json-output-with-langchain-be29fb6f6675)
+2. [Mastering Structured Output in LLMs 2: Revisiting LangChain and JSON](https://medium.com/@docherty/mastering-structured-output-in-llms-revisiting-langchain-and-json-structured-outputs-d95dfc286045)
+3. [Mastering Structured Output in LLMs 3: LangChain and XML](https://medium.com/@docherty/mastering-structured-output-in-llms-3-langchain-and-xml-8bad9e1f43ef)
+
 ### Setup and Installation
 
 This project uses Poetry for dependency management. Follow these steps to get started:
